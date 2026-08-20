@@ -1,1 +1,593 @@
-Indigenous Cartography
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Indigenous Cartography - Class Archive</title>
+
+  <!-- Globe.gl Library -->
+  <script src="https://unpkg.com/globe.gl"></script>
+  <!-- PapaParse for parsing CSV data -->
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030712;
+      font-family: "Courier New", Courier, Monaco, "Liberation Mono", monospace;
+    }
+
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #globeViz canvas {
+      pointer-events: auto !important;
+      /* filter: brightness(2.5) contrast(1.1); add filter if using dark globe */
+    }
+
+    /* Shared Overlay Card Base */
+    .overlay-card {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #000000;
+      border-radius: 0px;
+      padding: 14px 18px;
+      color: #0f172a;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      pointer-events: auto;
+    }
+
+    /* Top-Left Title Box - Vertically aligned in top region */
+    .title-box {
+      top: 24px;
+      left: 24px;
+      max-width: 320px;
+    }
+
+    .title-box h1 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #0f172a;
+    }
+
+    .title-box .subtitle {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    .title-box p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #334155;
+    }
+
+    /* Bottom-Left Secondary Info / Legend Box */
+    .info-box {
+      bottom: 24px;
+      left: 24px;
+      max-width: 280px;
+      font-size: 14px;
+    }
+
+    .info-box .info-header {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+      color: #0f172a;
+      border-bottom: 1px dashed #cbd5e1;
+      padding-bottom: 4px;
+    }
+
+    .info-box ul {
+      margin: 0 0 8px 0;
+      padding-left: 14px;
+      color: #334155;
+      line-height: 1.5;
+    }
+
+    .info-box .ui-hint {
+      font-size: 12px;
+      color: #64748b;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Marker styling */
+    .marker-container {
+      position: relative;
+      pointer-events: none; 
+      margin-left: -7px;
+      margin-top: -7px;
+      z-index: 10;
+    }
+
+    .glowing-dot {
+      width: 14px;
+      height: 14px;
+      background: #B4FC84;
+      border: 2px solid #000000;
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      cursor: pointer;
+      pointer-events: auto;
+      position: relative;
+    }
+
+    .glowing-dot::before {
+      content: '';
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      right: -6px;
+      bottom: -6px;
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    /* Standard Dot Hover: Grows slightly */
+    .glowing-dot:hover {
+      transform: scale(1.35);
+      background-color: #B4FC84;
+    }
+
+    /* ACTIVE CLICKED DOT: Fixed Enlarged Size */
+    .glowing-dot.active {
+      width: 22px;
+      height: 22px;
+      margin-left: -7px;
+      margin-top: -7px;
+      background: #B4FC84;
+      border: 2px solid #000000;
+      box-shadow: 
+        0 0 0 4px rgba(180, 252, 132, 0.4),
+        0 0 20px 8px rgba(255, 255, 255, 0.9);
+      animation: pulse-active 2s infinite alternate ease-in-out;
+    }
+
+    /* Active Dot Hover: Stays at active size without growing further */
+    .glowing-dot.active:hover {
+      transform: none;
+    }
+
+    @keyframes pulse-active {
+      0% {
+        box-shadow: 
+          0 0 0 4px rgba(180, 252, 132, 0.4),
+          0 0 15px 5px rgba(255, 255, 255, 0.8);
+      }
+      100% {
+        box-shadow: 
+          0 0 0 8px rgba(180, 252, 132, 0.2),
+          0 0 25px 12px rgba(255, 255, 255, 1);
+      }
+    }
+
+    .research-dot {
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border: 1px solid #000000;
+      border-radius: 50%;
+      opacity: 0.85;
+      pointer-events: auto;
+
+      box-shadow: 
+        0 0 0 1px #000000,
+        0 0 8px 3px rgba(255, 255, 255, 0.9),
+        0 0 14px 6px rgba(255, 255, 255, 0.5);
+    }
+
+    /* DYNAMIC-HEIGHT & VERTICALLY CENTERED RIGHT SIDEBAR CARD */
+    .detail-card {
+      position: fixed;
+      top: 50%;
+      right: 24px;
+      transform: translateY(-50%);
+      width: 320px;
+      height: auto;
+      max-height: calc(100vh - 48px);
+      display: none;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #000000;
+      border-radius: 0px;
+      padding: 22px 20px;
+      color: #0f172a;
+      box-shadow: -8px 12px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      z-index: 9999;
+      pointer-events: auto;
+      font-family: "Courier New", Courier, Monaco, monospace;
+      box-sizing: border-box;
+      flex-direction: column;
+    }
+
+    .detail-card-inner {
+      overflow-y: auto;
+      max-height: 100%;
+      padding-right: 4px;
+    }
+
+    /* Popup Close Button (X) */
+    .popup-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: transparent;
+      border: none;
+      font-size: 20px;
+      font-weight: bold;
+      color: #0f172a;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px 6px;
+      z-index: 10;
+    }
+
+    .popup-close:hover {
+      color: #ef4444;
+    }
+
+    .detail-card h3 {
+      margin: 0 28px 4px 0;
+      font-size: 18px;
+      color: #0f172a;
+    }
+
+    .detail-card .subtitle {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    .detail-card p {
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0 0 14px 0;
+      color: #334155;
+    }
+
+    .detail-card img {
+      width: 100%;
+      height: auto;
+      max-height: 220px;
+      object-fit: cover;
+      border-radius: 0px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      display: block;
+    }
+
+    .detail-card .links-header {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #0f172a;
+      font-weight: 700;
+      margin-bottom: 6px;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    .detail-card ul.work-links {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 13px;
+    }
+
+    .detail-card ul.work-links li {
+      margin-bottom: 6px;
+    }
+
+    /* UNBOLDED WORK LINKS */
+    .detail-card ul.work-links a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: normal;
+    }
+
+    .detail-card ul.work-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="globeViz"></div>
+
+  <!-- Title Box -->
+  <div class="overlay-card title-box">
+    <h1>Indigenous Cartography & GIS</h1>
+    <div class="subtitle">School of Poetic Computation, 2026</div>
+    <p>An archive of student work exploring land memory through spatial technology and alternative mapping practices.</p>
+  </div>
+
+  <!-- Secondary Info / Legend Box -->
+  <div class="overlay-card info-box">
+    <div class="info-header">Key & Controls</div>
+    <ul>
+      <li><strong>Green dots:</strong> Origins</li>
+      <li><strong>Red dots:</strong> Research Areas</li>
+      <li><strong>Violet arcs:</strong> Collaborations</li>
+    </ul>
+    <div class="ui-hint">Drag to rotate • Scroll to zoom • Click on Origins for details</div>
+  </div>
+
+  <!-- Dedicated Sidebar Card (Far-Right Edge Overlay, Vertically Centered) -->
+  <div id="detailCard" class="detail-card">
+    <button class="popup-close" id="cardCloseBtn">&times;</button>
+    <div class="detail-card-inner" id="cardContent">
+      <!-- Dynamic Content Injected Here -->
+    </div>
+  </div>
+
+  <script>
+    const GOOGLE_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTvVcr9heoQskQY6aZhlAwBHiEKuBgvHO1P65T8Pvj_BVFjS8yweNAGidu8WvcgDdcID9JjwwHzv-gM/pub?gid=540858288&single=true&output=csv';
+
+    const detailCard = document.getElementById('detailCard');
+    const cardContent = document.getElementById('cardContent');
+    const cardCloseBtn = document.getElementById('cardCloseBtn');
+
+    const world = Globe()
+      (document.getElementById('globeViz'))
+      .globeImageUrl('https://lh3.googleusercontent.com/d/1wgs1q25TAPeLXurGBFTaak8iVgBt0uKy')
+      // .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')  // uncomment to use dark globe
+      .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+      .backgroundColor('#030712')
+      .showAtmosphere(true)
+      .atmosphereColor('#2323FF')
+      .atmosphereAltitude(0.20)
+
+      // --- DYNAMIC ARCS ---
+      .arcColor(d => d.type === 'collaborator' ? '#A639FF' : '#FFFF96')
+      .arcStroke(d => d.type === 'collaborator' ? 1.5 : 0.1)
+      .arcDashLength(d => d.type === 'collaborator' ? 0.05 : 0)
+      .arcDashGap(d => d.type === 'collaborator' ? 0.03 : 0)
+      .arcDashAnimateTime(d => d.type === 'collaborator' ? 20000 : 0)
+      .arcAltitude(d => {
+        const toRad = deg => (deg * Math.PI) / 180;
+        const dLat = toRad(d.endLat - d.startLat);
+        const dLng = toRad(d.endLng - d.startLng);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(d.startLat)) * Math.cos(toRad(d.endLat)) *
+          Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const angularDistance = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceRatio = Math.max(0.15, angularDistance / Math.PI);
+        const baseAltitude = d.type === 'collaborator' ? 0.50 : 0.45;
+        return baseAltitude * distanceRatio;
+      });
+
+    world.controls().autoRotate = true;
+    world.controls().autoRotateSpeed = 0.4;
+    world.pointOfView({ lat: 15, lng: -160, altitude: 2.2 });
+
+    function stopRotation() {
+      if (world.controls().autoRotate) {
+        world.controls().autoRotate = false;
+      }
+    }
+
+    function closeCard() {
+      detailCard.style.display = 'none';
+      document.querySelectorAll('.glowing-dot').forEach(dot => dot.classList.remove('active'));
+    }
+
+    cardCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeCard();
+    });
+
+    world.onGlobeClick(() => {
+      stopRotation();
+      closeCard();
+    });
+    
+    const globeContainer = document.getElementById('globeViz');
+    globeContainer.addEventListener('mousedown', stopRotation);
+    globeContainer.addEventListener('click', (e) => {
+      if (e.target.tagName === 'CANVAS') {
+        closeCard();
+      }
+    });
+
+    Papa.parse(GOOGLE_SHEET_CSV_URL, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        processCSVData(results.data);
+      },
+      error: function(err) {
+        console.error("Error fetching Google Sheet CSV:", err);
+      }
+    });
+
+    function processCSVData(rows) {
+      const mainMarkers = [];
+      const researchMarkers = [];
+      const studentMap = {};
+      const arcData = [];
+
+      rows.forEach((rawRow, index) => {
+        const row = {};
+        Object.keys(rawRow).forEach(key => {
+          const cleanKey = key
+            .replace(/^\uFEFF/, '')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .trim()
+            .toLowerCase();
+          row[cleanKey] = rawRow[key];
+        });
+
+        const latStr = row.lat || row.latitude;
+        const lngStr = row.lng || row.long || row.longitude;
+
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const student = {
+          id: row.unique_id ? row.unique_id.trim() : `student-${index}`,
+          name: row.name || 'Anonymous',
+          lat: lat,
+          lng: lng,
+          subtitle: row.subtitle || '',
+          summary: row.summary || '',
+          image: row.image ? row.image.trim() : '',
+          links: parseLinks(row.links),
+          collaborators: row.collaborators ? row.collaborators.split('|').map(c => c.trim()) : [],
+          researchAreas: row.research_areas || ''
+        };
+
+        studentMap[student.id] = student;
+        mainMarkers.push(student);
+
+        // Research location arcs
+        if (row.research_areas) {
+          const areas = row.research_areas.split('|');
+          areas.forEach(coord => {
+            const parts = coord.split(',').map(n => parseFloat(n.trim()));
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              const rLat = parts[0];
+              const rLng = parts[1];
+              researchMarkers.push({ lat: rLat, lng: rLng, owner: student.name });
+
+              arcData.push({
+                startLat: student.lat,
+                startLng: student.lng,
+                endLat: rLat,
+                endLng: rLng,
+                type: 'research'
+              });
+            }
+          });
+        }
+      });
+
+      // Collaborator connections
+      mainMarkers.forEach(student => {
+        if (student.collaborators) {
+          student.collaborators.forEach(collabId => {
+            const partner = studentMap[collabId];
+            if (partner) {
+              arcData.push({
+                startLat: student.lat,
+                startLng: student.lng,
+                endLat: partner.lat,
+                endLng: partner.lng,
+                type: 'collaborator'
+              });
+            }
+          });
+        }
+      });
+
+      world.arcsData(arcData);
+
+      // HTML Markers Setup
+      world
+        .htmlElementsData([...mainMarkers, ...researchMarkers])
+        .htmlElement(d => {
+          const el = document.createElement('div');
+
+          if (d.owner) {
+            el.innerHTML = `<div class="research-dot" title="Research Area: ${d.owner}"></div>`;
+            return el;
+          }
+
+          el.className = 'marker-container';
+          el.innerHTML = `<div class="glowing-dot"></div>`;
+
+          const dot = el.querySelector('.glowing-dot');
+
+          dot.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+          });
+
+          dot.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            stopRotation();
+
+            const wasActive = dot.classList.contains('active');
+
+            setTimeout(() => {
+              closeCard();
+
+              if (!wasActive) {
+                dot.classList.add('active');
+
+                let linksHTML = '';
+                if (d.links.length > 0) {
+                  linksHTML = `
+                    <div class="links-header">Works & Links</div>
+                    <ul class="work-links">
+                      ${d.links.map(l => `<li><a href="${l.url}" target="_blank" rel="noopener">${l.label}</a></li>`).join('')}
+                    </ul>
+                  `;
+                }
+
+                const imageHTML = d.image ? `<img src="${d.image}" alt="${d.name}" />` : '';
+
+                cardContent.innerHTML = `
+                  <h3>${d.name}</h3>
+                  ${d.subtitle ? `<div class="subtitle">${d.subtitle}</div>` : ''}
+                  ${imageHTML}
+                  <p>${d.summary}</p>
+                  ${linksHTML}
+                `;
+
+                detailCard.style.display = 'flex';
+
+                world.pointOfView({
+                  lat: d.lat,
+                  lng: d.lng - 15, 
+                  altitude: 1.8
+                }, 1800);
+              }
+            }, 10);
+          });
+
+          return el;
+        });
+    }
+
+    function parseLinks(rawLinks) {
+      if (!rawLinks) return [];
+      return rawLinks.split('|').map(str => {
+        const parts = str.split(':');
+        if (parts.length >= 2) {
+          const label = parts[0].trim();
+          const url = parts.slice(1).join(':').trim();
+          return { label, url };
+        }
+        return { label: 'Link ↗', url: str.trim() };
+      });
+    }
+  </script>
+</body>
+</html>
