@@ -380,9 +380,10 @@
         return baseAltitude * distanceRatio;
       });
 
+    const randomLng = (Math.random() * 360) - 180; // Random longitude between -180° and 180°
     world.controls().autoRotate = true;
     world.controls().autoRotateSpeed = 0.4;
-    world.pointOfView({ lat: 15, lng: -160, altitude: 2.2 });
+    world.pointOfView({ lat: 15, lng: randomLng, altitude: 2.2 });
 
     function stopRotation() {
       if (world.controls().autoRotate) {
